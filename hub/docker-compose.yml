@@ -59,8 +59,21 @@ services:
 
     security_opt:
       - no-new-privileges:true
+    # The container runs as uid 10001 (see Dockerfile). Everything it writes
+    # must therefore be either a tmpfs or a bind mount owned by 10001 --
+    # `chown -R 10001:10001 /srv/kindle-os` on the host. Getting this wrong
+    # shows up as "sqlite3.OperationalError: unable to open database file",
+    # which reads like a path bug and is actually a permissions bug.
     read_only: true
     tmpfs:
       - /tmp:size=32m
+      # gunicorn 26 writes a control-server socket under $HOME. With
+      # read_only: true and no writable HOME it logs "Control server error:
+      # Read-only file system: /home/kindlehub/.gunicorn" on every boot.
+      # Non-fatal on its own, but it is noise that hides real errors.
+      # uid/gid must be set explicitly: a tmpfs defaults to root-owned, and
+      # the process is uid 10001, so without these the same failure reappears
+      # as "Permission denied" instead of "Read-only file system".
+      - /home/kindlehub:size=8m,uid=10001,gid=10001,mode=0700
     cap_drop:
       - ALL
