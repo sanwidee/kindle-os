@@ -1,0 +1,31 @@
+# kindle-os hub runtime dependencies. Pinned exactly.
+#
+# Python >= 3.10 is required by markdown-it-py, gunicorn and pillow. On the
+# target box /usr/bin/python3 is 3.6.8 and is what dnf itself runs on, so
+# never pip install into it. The container uses python:3.12-slim; a bare-metal
+# venv must be created with /usr/bin/python3.12 explicitly.
+
+# HTTP layer. Pulls jinja2, werkzeug, markupsafe, click, itsdangerous, blinker
+# -- all pure Python and small. Werkzeug's HEAD + Last-Modified handling is
+# load-bearing: KOReader's feed cache is built on it.
+flask==3.1.3
+
+# WSGI server. One gthread worker, 4 threads. See docker-compose.yml.
+gunicorn==26.0.0
+
+# Markdown. Here for its token stream, not its speed: one parse feeds two
+# renderer profiles (narrow for the EPUB, wide for the browser).
+# mdit-py-plugins supplies footnote, deflist and tasklists.
+markdown-it-py==4.2.0
+mdit-py-plugins==0.6.1
+
+# Front matter. yaml.safe_load only.
+PyYAML==6.0.3
+
+# Image processing. Imported lazily -- a text-only build never loads it, which
+# keeps ~15 MB out of baseline RSS for the common case.
+pillow==12.3.0
+
+# argon2id for the single web password. The auth design specifies
+# time_cost=3, memory_cost=64 MiB, parallelism=1.
+argon2-cffi==25.1.0

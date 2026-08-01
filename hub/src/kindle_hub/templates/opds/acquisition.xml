@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:dc="http://purl.org/dc/terms/">
+  <id>{{ feed_id }}</id>
+  <title>{{ feed_title }}</title>
+  <updated>{{ updated }}</updated>
+  <author><name>kindle-os</name></author>
+{%- for link in links %}
+  <link rel="{{ link.rel }}" href="{{ link.href }}" type="{{ link.type }}"{% if link.title %} title="{{ link.title }}"{% endif %}/>
+{%- endfor %}
+{%- for entry in entries %}
+  <entry>
+    <id>{{ entry.id }}</id>
+    <title>{{ entry.title }}</title>
+    <updated>{{ entry.updated }}</updated>
+{%- if entry.issued %}
+    <dc:issued>{{ entry.issued }}</dc:issued>
+{%- endif %}
+{%- if entry.language %}
+    <dc:language>{{ entry.language }}</dc:language>
+{%- endif %}
+{%- if entry.extent %}
+    <dc:extent>{{ entry.extent }}</dc:extent>
+{%- endif %}
+{%- if entry.author %}
+    <author><name>{{ entry.author }}</name></author>
+{%- endif %}
+{%- for category in entry.categories %}
+    <category term="{{ category }}" label="{{ category }}"/>
+{%- endfor %}
+{%- if entry.summary %}
+    <summary type="text">{{ entry.summary }}</summary>
+{%- endif %}
+{%- for link in entry.links %}
+    <link rel="{{ link.rel }}" href="{{ link.href }}" type="{{ link.type }}"{% if link.length %} length="{{ link.length }}"{% endif %}/>
+{%- endfor %}
+  </entry>
+{%- endfor %}
+</feed>

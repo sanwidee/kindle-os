@@ -1,0 +1,66 @@
+# kindle-os hub.
+#
+# Read the three comments below before changing anything: each one is a
+# RHEL-family or shared-box hazard that gives no warning when you get it wrong.
+
+services:
+  kindle-hub:
+    build: .
+    image: kindle-hub:0.1.0
+    container_name: kindle-hub
+    restart: unless-stopped
+
+    # HAZARD 1 -- Docker publishes past firewalld.
+    # There is no /etc/docker/daemon.json on the box, so Docker runs with
+    # iptables=true and installs its own DOCKER chain, while firewalld runs
+    # the nftables backend. A plain "8090:8090" here is reachable from the
+    # public internet even though `firewall-cmd --list-all` reports only
+    # ssh/http/https and looks entirely reassuring. Bind explicitly, and
+    # verify from OFF the box (`nc -zv <ip> 8090` must fail) -- firewalld's
+    # own output will not tell you.
+    ports:
+      - "127.0.0.1:8090:8090"
+
+    # HAZARD 2 -- cgroup v1 with the cgroupfs driver.
+    # mem_limit works, but swap accounting is v1-style and the box has
+    # 2303 MB of swap across two swapfiles. Without memswap_limit a runaway
+    # build pages heavily and thrashes the single vCPU while every other
+    # vhost waits.
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.75
+
+    # HAZARD 3 -- no daemon.json means no global log rotation, and
+    # /var/lib/docker is already 3.7 GB of a 26 GB budget. Cap per service.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    env_file:
+      # Not in git. root:artifacthub 0640 on the box. See .env.example.
+      - /etc/artifact-hub/secrets.env
+
+    environment:
+      HUB_INBOX_DIR: /data/inbox
+      HUB_LIBRARY_DIR: /data/library
+      HUB_STATE_DIR: /data/state
+
+    volumes:
+      # rsync writes here from outside the container; the app only reads.
+      - /srv/kindle-os/inbox:/data/inbox:ro
+      - /srv/kindle-os/library:/data/library:rw
+      - /srv/kindle-os/state:/data/state:rw
+      # No :z / :Z labels: SELinux is Disabled on this box. If it is ever
+      # returned to enforcing, the bind mounts need container_file_t and
+      # three other things break at the same time -- `kindle-hub doctor`
+      # checks getenforce for exactly this reason.
+
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop:
+      - ALL

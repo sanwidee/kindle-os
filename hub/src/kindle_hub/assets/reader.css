@@ -1,0 +1,255 @@
+/* Web reader. Browser-only, never shipped inside an EPUB.
+ *
+ * The asymmetry with epub-eink.css is the point: a browser can scroll
+ * horizontally, so code keeps its original line lengths and wide tables keep
+ * their grid. One stylesheet, no build step, no framework. */
+
+:root {
+  --ink: #16130f;
+  --paper: #fbfaf7;
+  --rule: #d9d3c8;
+  --muted: #6b6357;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8e3da;
+    --paper: #171614;
+    --rule: #37332c;
+    --muted: #9a9287;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.6 ui-serif, Georgia, "Iowan Old Style", serif;
+}
+
+.wrap {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 5rem;
+}
+
+a { color: inherit; }
+
+header.site {
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: baseline;
+}
+
+header.site h1 {
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0;
+  font-weight: 600;
+}
+
+header.site nav {
+  font-size: 0.85rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+header.site nav a { color: var(--muted); text-decoration: none; }
+header.site nav a:hover { color: var(--ink); text-decoration: underline; }
+
+h2.shelf-title {
+  font-size: 1.4rem;
+  margin: 0 0 1.25rem;
+}
+
+ul.docs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.docs li {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.9rem 0;
+}
+
+ul.docs a.title {
+  font-size: 1.1rem;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+ul.docs a.title:hover { text-decoration: underline; }
+
+.meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.summary {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.tag {
+  font: 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+}
+
+/* --- document body ----------------------------------------------------- */
+
+article { font-size: 1.05rem; }
+
+article h1 { font-size: 1.7rem; margin: 2rem 0 0.6rem; }
+article h2 { font-size: 1.3rem; margin: 1.8rem 0 0.5rem; }
+article h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+
+article img { max-width: 100%; height: auto; }
+
+.code {
+  margin: 1.2rem 0;
+  border-left: 3px solid var(--rule);
+  padding-left: 0.8rem;
+}
+
+.code-lang {
+  margin: 0 0 0.25rem;
+  font: 0.7rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+pre {
+  margin: 0;
+  /* The whole reason the web door exists: no reflow, real scroll. */
+  overflow-x: auto;
+  white-space: pre;
+}
+
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin: 1.2rem 0;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 100%;
+}
+
+th, td {
+  border: 1px solid var(--rule);
+  padding: 0.35rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+blockquote {
+  margin: 1.2rem 0;
+  padding-left: 1rem;
+  border-left: 2px solid var(--rule);
+  color: var(--muted);
+}
+
+.placeholder { color: var(--muted); font-style: italic; }
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1rem 0 2rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.button {
+  display: inline-block;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.button:hover { border-color: var(--ink); }
+
+/* --- login ------------------------------------------------------------- */
+
+.login {
+  max-width: 22rem;
+  margin: 18vh auto 0;
+  padding: 0 1.25rem;
+}
+
+.login h1 {
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 1.25rem;
+}
+
+.login input[type="password"] {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  font-size: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+
+.login button {
+  margin-top: 0.75rem;
+  width: 100%;
+  padding: 0.6rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.error {
+  color: #a3341f;
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error { color: #e08b74; }
+}
+
+.empty { color: var(--muted); font-style: italic; }

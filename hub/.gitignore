@@ -1,0 +1,21 @@
+# Real config never lands in git. Only .env.example does.
+.env
+.env.*
+!.env.example
+
+# Local dev data: inbox fixtures, generated EPUBs, the SQLite catalog.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.epub
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/

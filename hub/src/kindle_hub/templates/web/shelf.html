@@ -1,0 +1,42 @@
+{% extends "web/base.html" %}
+{% block title %}{{ shelf_title }} · {{ site_title }}{% endblock %}
+{% block content %}
+<h2 class="shelf-title">{{ shelf_title }}</h2>
+
+{% if query is defined %}
+<form method="get" action="{{ url_for('reader.search') }}" style="margin-bottom:1.5rem">
+  <input type="search" name="q" value="{{ query }}" placeholder="Search titles and summaries"
+         style="width:100%;padding:0.5rem 0.6rem;font:inherit;border:1px solid var(--rule);border-radius:4px;background:transparent;color:inherit">
+</form>
+{% endif %}
+
+{% if documents %}
+<ul class="docs">
+  {% for doc in documents %}
+  <li>
+    <a class="title" href="{{ doc.reader_href }}">{{ doc.title }}</a>
+    {% if doc.summary %}<p class="summary">{{ doc.summary }}</p>{% endif %}
+    <div class="meta">
+      <span>{{ doc.updated[:10] }}</span>
+      <a href="{{ url_for('reader.collection', name=doc.collection) }}">{{ doc.collection }}</a>
+      <span>{{ (doc.epub_bytes / 1024) | round | int }} KB</span>
+      {% for tag in doc.tags %}
+      <a class="tag" href="{{ url_for('reader.tag', tag=tag) }}">{{ tag }}</a>
+      {% endfor %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+{% if pages > 1 %}
+<div class="pager">
+  <span>{% if page > 1 %}<a href="?page={{ page - 1 }}{% if query is defined %}&amp;q={{ query }}{% endif %}">Newer</a>{% endif %}</span>
+  <span>Page {{ page }} of {{ pages }} &middot; {{ total }} documents</span>
+  <span>{% if page < pages %}<a href="?page={{ page + 1 }}{% if query is defined %}&amp;q={{ query }}{% endif %}">Older</a>{% endif %}</span>
+</div>
+{% endif %}
+
+{% else %}
+<p class="empty">Nothing here yet. rsync a markdown file into the inbox and it shows up within a minute.</p>
+{% endif %}
+{% endblock %}

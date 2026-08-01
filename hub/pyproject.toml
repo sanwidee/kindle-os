@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kindle-hub"
+version = "0.1.0"
+description = "Markdown in, e-ink EPUB and an OPDS 1.2 feed out. Two doors, one content store."
+requires-python = ">=3.12"
+dependencies = [
+    "flask==3.1.3",
+    "gunicorn==26.0.0",
+    "markdown-it-py==4.2.0",
+    "mdit-py-plugins==0.6.1",
+    "PyYAML==6.0.3",
+    "pillow==12.3.0",
+    "argon2-cffi==25.1.0",
+]
+
+[project.optional-dependencies]
+# epubcheck is a JAR and runs on the Mac or in CI, never on the box: there is
+# no JVM on vps2 and installing one to validate ebooks would be absurd on a
+# 1 vCPU host.
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+kindle-hub = "kindle_hub.__main__:cli"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kindle_hub = [
+    "templates/opds/*.xml",
+    "templates/web/*.html",
+    "assets/*.css",
+    "catalog/*.sql",
+]
+
+[tool.ruff]
+line-length = 96
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# The fixture corpus contains deliberately pathological input: over-long code
+# lines are the thing the converter exists to handle.
+"tests/conftest.py" = ["E501"]
