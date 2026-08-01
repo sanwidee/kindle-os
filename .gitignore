@@ -15,3 +15,6 @@ venv/
 # exFAT sidecars — the working drive creates one of these per file
 ._*
 .DS_Store
+
+# Device backups — binary, personal, never publish
+.backups/
