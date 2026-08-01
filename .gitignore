@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+.env
+.env.*
+!.env.example
+
+# exFAT sidecars — the working drive creates one of these per file
+._*
+.DS_Store
