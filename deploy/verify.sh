@@ -174,7 +174,11 @@ if [ -n "${OPDS_USER:-}" ] && [ -n "${OPDS_PASS:-}" ]; then
         # An EPUB is a zip whose first entry must be an uncompressed
         # "mimetype". A 403 error page also returns 200-shaped bytes to a
         # careless check, so verify the actual container.
-        if head -c 30 "$epub" | grep -q "mimetypeapplication/epub+zip"; then
+        # 64 bytes, not 30. The marker begins at byte 30 exactly: 4 bytes of
+        # zip signature + a 26-byte local file header, then the "mimetype"
+        # filename and its content. Reading 30 sliced the string in half and
+        # reported every valid EPUB as broken.
+        if head -c 64 "$epub" | grep -q "mimetypeapplication/epub+zip"; then
           ok "downloaded bytes are a well-formed EPUB"
         else
           bad "download is not an EPUB -- got $(file -b "$epub" 2>/dev/null | head -c 40)"
