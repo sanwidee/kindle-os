@@ -138,6 +138,67 @@ case "$c" in
   *)   bad "http://${HOST}/opds returned $c -- expected a redirect" ;;
 esac
 
+# --- 7. the authenticated happy path ---------------------------------------
+#
+# ADDED AFTER A MISS. Every check above passed on a deploy where the Kindle
+# door was completely unusable: the OPDS feed listed books, and every download
+# returned 403 because nginx could not read the library directory (the app had
+# authenticated fine and handed off via X-Accel-Redirect). Testing only that
+# strangers are kept OUT says nothing about whether the owner gets IN.
+#
+# Needs a device token. Mint a throwaway one, export it, run this, revoke it:
+#   python -m kindle_hub mint-token probe-temp
+#   OPDS_USER=probe-temp OPDS_PASS=<token> deploy/verify.sh
+#   python -m kindle_hub token rm probe-temp
+printf '\nAuthenticated path\n'
+if [ -n "${OPDS_USER:-}" ] && [ -n "${OPDS_PASS:-}" ]; then
+  feed=$(mktemp)
+  c=$(curl -sS -u "${OPDS_USER}:${OPDS_PASS}" -o "$feed" \
+        -w '%{http_code}' --max-time 30 "${BASE}/opds/new" 2>/dev/null || echo "000")
+  if [ "$c" = "200" ]; then
+    ok "OPDS feed served to a valid token"
+
+    if grep -q 'profile=opds-catalog' "$feed" 2>/dev/null || grep -q '<feed' "$feed" 2>/dev/null; then
+      ok "response parses as an Atom feed"
+    else
+      bad "200 but the body is not an Atom feed -- KOReader will show nothing"
+    fi
+
+    acq=$(grep -oE 'href="[^"]*\.epub"' "$feed" 2>/dev/null | head -1 | sed 's/href="//;s/"//')
+    if [ -n "$acq" ]; then
+      epub=$(mktemp)
+      c=$(curl -sS -u "${OPDS_USER}:${OPDS_PASS}" -o "$epub" \
+            -w '%{http_code}' --max-time 60 "$acq" 2>/dev/null || echo "000")
+      if [ "$c" = "200" ]; then
+        ok "acquisition link downloads with the same token"
+        # An EPUB is a zip whose first entry must be an uncompressed
+        # "mimetype". A 403 error page also returns 200-shaped bytes to a
+        # careless check, so verify the actual container.
+        if head -c 30 "$epub" | grep -q "mimetypeapplication/epub+zip"; then
+          ok "downloaded bytes are a well-formed EPUB"
+        else
+          bad "download is not an EPUB -- got $(file -b "$epub" 2>/dev/null | head -c 40)"
+        fi
+      else
+        bad "acquisition link returned HTTP $c to a VALID token"
+        note "The feed lists books the Kindle cannot download. Check that"
+        note "nginx can read /srv/kindle-os/library (X-Accel-Redirect opens"
+        note "the file as the nginx user, not as the app user)."
+      fi
+      rm -f "$epub"
+    else
+      note "no .epub acquisition link in the feed yet (empty library?) -- skipped"
+    fi
+  else
+    bad "OPDS feed returned HTTP $c to a valid token"
+  fi
+  rm -f "$feed"
+else
+  note "SKIPPED -- set OPDS_USER and OPDS_PASS to test the authenticated path."
+  note "Without it this script only proves strangers are kept out, not that"
+  note "the Kindle actually works. That gap hid a real 403 once already."
+fi
+
 printf '\n----------------------------------------\n'
 printf '  %d passed, %d failed\n\n' "$pass" "$fail"
 
