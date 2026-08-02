@@ -73,15 +73,22 @@ def sweep(cfg: Config, store: Store, force: bool = False) -> SweepResult:
     result = SweepResult()
     md = mdrender.build_parser()
 
-    known = store.get_source_shas()
+    # Compare build_sha, not source_sha. build_sha folds in the renderer
+    # config, so a converter change or a HUB_RENDERER_VERSION bump rebuilds
+    # the library instead of silently leaving it on the previous renderer.
+    # Comparing source_sha only asked "did the markdown change", which is a
+    # different question and the wrong one.
+    known = store.get_build_shas()
     found = scanner.scan(cfg.inbox_dir)
     result.scanned = len(found)
     seen: set[str] = set()
 
     for source in found:
         seen.add(source.relpath)
-        if not force and known.get(source.relpath) == source.source_sha:
-            continue
+        if not force:
+            want = pipeline.compute_build_sha(source.path.read_bytes(), cfg)
+            if known.get(source.relpath) == want:
+                continue
         try:
             built = pipeline.build(cfg, source, md=md)
             store.upsert_document(built.document, built.html_wide)

@@ -14,7 +14,7 @@ from pathlib import Path
 from ..catalog.store import Document, utcnow
 from ..config import Config
 from ..ingest import frontmatter, scanner
-from . import epub, images, mdrender, textclean
+from . import cover, epub, images, mdrender, textclean
 from .mdrender import ENV_CFG, ENV_IMAGE_RESOLVER, ResolvedImage
 
 log = logging.getLogger("kindle_hub.pipeline")
@@ -163,6 +163,27 @@ def build(cfg: Config, source: scanner.SourceFile, md=None) -> BuildResult:
     doc_dir = cfg.library_dir / doc_id
     epub_path = doc_dir / epub_name
 
+    # Generated cover. A shelf of thirty identical grey placeholders is hard
+    # to navigate in KOReader's thumbnail grid; a cover per document fixes
+    # that for the cost of ~30 KB and a few milliseconds.
+    #
+    # Failure here must never lose a document: a cover is a nicety and the
+    # text is the point. If Pillow is missing, fonts are absent, or anything
+    # else goes wrong, log it and build the EPUB without one.
+    cover_img = None
+    try:
+        cover_img = epub.EpubImage(
+            "cover.png",
+            cover.render_cover(
+                fm.title,
+                doc_id=doc_id,
+                collection=fm.collection or "",
+                date=(fm.issued or "")[:10],
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 -- cosmetic, never fatal
+        log.warning("cover generation failed for %s: %s", source.relpath, exc)
+
     spec = epub.EpubSpec(
         identifier=f"urn:uuid:{doc_uuid}",
         title=fm.title,
@@ -173,6 +194,7 @@ def build(cfg: Config, source: scanner.SourceFile, md=None) -> BuildResult:
         sections=epub_sections,
         images=[epub.EpubImage(p.name, p.data) for p in collector.processed.values()],
         description=fm.summary,
+        cover=cover_img,
     )
     epub_bytes = epub.write_epub(spec, epub_path)
 

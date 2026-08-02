@@ -233,12 +233,56 @@ def test_wide_table_becomes_records_and_narrow_stays_a_grid(cfg):
 
 
 def test_remote_images_are_not_fetched(cfg):
+    """The converter must never make an outbound request for a remote <img>.
+
+    The assertion is narrowed to FETCHED images on purpose. It used to read
+    "EPUB/images/ is empty", which happened to be equivalent until covers
+    were added -- a generated local cover then failed a test about network
+    behaviour. Asserting the absence of the whole directory tested the
+    implementation; asserting the absence of fetched files tests the rule.
+    """
     with zipfile.ZipFile(_one_epub(cfg)) as zf:
         html = "".join(
             zf.read(n).decode() for n in zf.namelist() if n.endswith(".xhtml")
         )
-        assert not [n for n in zf.namelist() if n.startswith("EPUB/images/")]
+        fetched = [
+            n
+            for n in zf.namelist()
+            if n.startswith("EPUB/images/") and n != "EPUB/images/cover.png"
+        ]
+        assert not fetched, f"something was fetched: {fetched}"
     assert "image not available" in html
+
+
+def test_cover_is_generated_and_declared_three_ways(cfg):
+    """A cover that only satisfies EPUB 3 shows a blank thumbnail in the very
+    grid it was added for. Assert all three declarations, plus that the image
+    is a real greyscale PNG rather than a placeholder."""
+    with zipfile.ZipFile(_one_epub(cfg)) as zf:
+        names = zf.namelist()
+        assert "EPUB/images/cover.png" in names
+        assert "EPUB/cover.xhtml" in names
+
+        opf = next(zf.read(n).decode() for n in names if n.endswith(".opf"))
+        assert 'properties="cover-image"' in opf, "EPUB 3 readers need this"
+        assert '<meta name="cover"' in opf, "EPUB 2 fallback needs this"
+        assert 'idref="cover" linear="no"' in opf, "keeps it out of the text flow"
+
+        png = zf.read("EPUB/images/cover.png")
+        assert png[:8] == b"\x89PNG\r\n\x1a\n", "cover is not a PNG"
+        assert len(png) > 2000, "cover is suspiciously small -- blank render?"
+
+
+def test_cover_is_deterministic(cfg):
+    """Byte-stable rebuilds are asserted elsewhere; the cover must not be the
+    thing that breaks them. Anything time- or random-derived would."""
+    from kindle_hub.convert.cover import render_cover
+
+    a = render_cover("Some title", doc_id="abc123", collection="notes", date="2026-08-02")
+    b = render_cover("Some title", doc_id="abc123", collection="notes", date="2026-08-02")
+    assert a == b
+    c = render_cover("Some title", doc_id="def456", collection="notes", date="2026-08-02")
+    assert a != c, "different documents should not get identical covers"
 
 
 def test_no_section_degraded_to_escaped_text(cfg):

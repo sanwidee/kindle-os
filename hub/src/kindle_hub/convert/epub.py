@@ -67,6 +67,10 @@ class EpubSpec:
     sections: list[EpubSection] = field(default_factory=list)
     images: list[EpubImage] = field(default_factory=list)
     description: str = ""
+    # Optional generated cover. Kept separate from `images` because it needs
+    # its own manifest properties, its own spine entry, and must NOT appear
+    # in the reading order alongside inline figures.
+    cover: EpubImage | None = None
 
 
 _XHTML_TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
@@ -114,6 +118,28 @@ def _render_section(section: EpubSection, language: str) -> str:
     )
 
 
+COVER_XHTML = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" \
+xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="{lang}">
+<head>
+<meta charset="utf-8" />
+<title>Cover</title>
+<style type="text/css">
+/* No stylesheet link and no margins: a cover page that inherits body padding
+   renders with a white border the reader cannot remove. */
+body {{ margin: 0; padding: 0; text-align: center; }}
+img {{ max-width: 100%; max-height: 100%; }}
+</style>
+</head>
+<body>
+<section epub:type="cover">
+<img src="images/{name}" alt="{alt}" />
+</section>
+</body>
+</html>
+"""
+
+
 def _render_opf(spec: EpubSpec) -> str:
     manifest = [
         '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" '
@@ -122,6 +148,26 @@ def _render_opf(spec: EpubSpec) -> str:
         '<item id="css" href="style.css" media-type="text/css"/>',
     ]
     spine = []
+
+    # The cover needs THREE separate declarations to be recognised everywhere:
+    #   1. properties="cover-image" on the image  -- EPUB 3 readers
+    #   2. <meta name="cover" content="...">      -- EPUB 2 fallback, which is
+    #      what several Kindle-side tools still look for
+    #   3. a spine entry with linear="no"         -- so it shows as the cover
+    #      rather than as the first page of the text
+    # Declaring only the first produces a book whose thumbnail is blank in
+    # exactly the place we wanted one: the file browser grid.
+    if spec.cover is not None:
+        manifest.append(
+            f'<item id="cover-image" href="images/{spec.cover.name}" '
+            f'media-type="image/png" properties="cover-image"/>'
+        )
+        manifest.append(
+            '<item id="cover" href="cover.xhtml" '
+            'media-type="application/xhtml+xml"/>'
+        )
+        spine.append('<itemref idref="cover" linear="no"/>')
+
     for i, section in enumerate(spec.sections):
         item_id = f"s{i:03d}"
         manifest.append(
@@ -146,7 +192,9 @@ def _render_opf(spec: EpubSpec) -> str:
         + (f"    <dc:description>{escape(spec.description)}</dc:description>\n"
            if spec.description else "")
         + f'    <meta property="dcterms:modified">{escape(spec.modified)}</meta>\n'
-        "  </metadata>\n"
+        + ('    <meta name="cover" content="cover-image"/>\n'
+           if spec.cover is not None else "")
+        + "  </metadata>\n"
         "  <manifest>\n    " + "\n    ".join(manifest) + "\n  </manifest>\n"
         '  <spine toc="ncx">\n    ' + "\n    ".join(spine) + "\n  </spine>\n"
         "</package>\n"
@@ -235,10 +283,24 @@ def write_epub(spec: EpubSpec, path: Path) -> int:
         _write(zf, NAV_PATH, _render_nav(spec))
         _write(zf, NCX_PATH, _render_ncx(spec))
         _write(zf, CSS_PATH, spec.css)
+        if spec.cover is not None:
+            _write(
+                zf,
+                "EPUB/cover.xhtml",
+                COVER_XHTML.format(
+                    lang=spec.language,
+                    name=spec.cover.name,
+                    alt=escape(spec.title),
+                ),
+            )
         for section in spec.sections:
             _write(zf, f"EPUB/{section.filename}", _render_section(section, spec.language))
         for image in sorted(spec.images, key=lambda i: i.name):
             _write(zf, f"EPUB/images/{image.name}", image.data)
+        if spec.cover is not None:
+            # PNG is already deflate-compressed internally; storing it avoids
+            # a second pass that costs CPU and gains nothing.
+            _write(zf, f"EPUB/images/{spec.cover.name}", spec.cover.data, compress=False)
 
     tmp.replace(path)
     return path.stat().st_size

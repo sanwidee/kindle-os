@@ -125,10 +125,32 @@ class Store:
     # -- documents -------------------------------------------------------
 
     def get_source_shas(self) -> dict[str, str]:
-        """relpath -> source_sha for the whole library. One query, used by the
-        builder to decide what changed."""
+        """relpath -> source_sha for the whole library.
+
+        Kept for callers that genuinely want "did the markdown change". The
+        builder does NOT use this to decide what to rebuild -- see
+        get_build_shas below for why.
+        """
         rows = self._execute("SELECT relpath, source_sha FROM documents").fetchall()
         return {r["relpath"]: r["source_sha"] for r in rows}
+
+    def get_build_shas(self) -> dict[str, str]:
+        """relpath -> build_sha for the whole library.
+
+        build_sha covers the markdown AND every renderer knob (column
+        budgets, e-ink width, HUB_RENDERER_VERSION), so comparing it is what
+        makes a converter change actually reach documents already on disk.
+
+        BUG FIXED HERE: the builder used to compare source_sha instead. The
+        markdown had not changed, so every document was skipped and the
+        library silently stayed on the old renderer -- the exact
+        "mixed-vintage library" that compute_build_sha's docstring claims
+        bumping HUB_RENDERER_VERSION prevents. Adding covers is what surfaced
+        it: nothing rebuilt, and every cover was missing with no error
+        anywhere. Any earlier renderer change had the same silent outcome.
+        """
+        rows = self._execute("SELECT relpath, build_sha FROM documents").fetchall()
+        return {r["relpath"]: r["build_sha"] for r in rows}
 
     def upsert_document(self, doc: Document, html_wide: str) -> None:
         now = utcnow()
