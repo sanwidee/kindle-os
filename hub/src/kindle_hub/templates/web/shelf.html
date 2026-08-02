@@ -4,9 +4,8 @@
 <h2 class="shelf-title">{{ shelf_title }}</h2>
 
 {% if query is defined %}
-<form method="get" action="{{ url_for('reader.search') }}" style="margin-bottom:1.5rem">
-  <input type="search" name="q" value="{{ query }}" placeholder="Search titles and summaries"
-         style="width:100%;padding:0.5rem 0.6rem;font:inherit;border:1px solid var(--rule);border-radius:4px;background:transparent;color:inherit">
+<form class="search" method="get" action="{{ url_for('reader.search') }}">
+  <input type="search" name="q" value="{{ query }}" placeholder="Search titles and summaries">
 </form>
 {% endif %}
 

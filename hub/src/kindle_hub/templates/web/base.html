@@ -10,14 +10,14 @@
 <body>
 <div class="wrap">
   <header class="site">
-    <h1><a href="{{ url_for('reader.home') }}" style="text-decoration:none">{{ site_title }}</a></h1>
+    <h1><a href="{{ url_for('reader.home') }}">{{ site_title }}</a></h1>
     <nav>
       <a href="{{ url_for('reader.home') }}">Recent</a>
       <a href="{{ url_for('reader.all_documents') }}">All</a>
       <a href="{{ url_for('reader.search') }}">Search</a>
-      <form method="post" action="{{ url_for('reader.logout') }}" style="display:inline">
+      <form method="post" action="{{ url_for('reader.logout') }}">
         <input type="hidden" name="csrf" value="{{ g.csrf_token }}">
-        <button type="submit" style="background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline">Log out</button>
+        <button type="submit">Log out</button>
       </form>
     </nav>
   </header>

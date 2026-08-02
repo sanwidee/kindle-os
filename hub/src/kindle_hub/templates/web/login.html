@@ -9,12 +9,13 @@
 </head>
 <body>
 <div class="login">
+  <p class="lede">Sign in to continue</p>
   <h1>{{ site_title }}</h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form method="post" action="{{ url_for('reader.login_post') }}">
     <input type="hidden" name="csrf" value="{{ g.csrf_token }}">
     <input type="hidden" name="next" value="{{ next }}">
-    <label for="password" style="display:block;font-size:0.85rem;margin-bottom:0.4rem">Password</label>
+    <label for="password">Password</label>
     <input id="password" type="password" name="password" autocomplete="current-password"
            autofocus required>
     <button type="submit">Sign in</button>
