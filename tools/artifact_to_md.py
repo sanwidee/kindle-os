@@ -138,6 +138,32 @@ def main() -> int:
     Path(args.outfile).write_text(out, "utf-8")
 
     words = len(md.split())
+
+    # LOW-YIELD GUARD.
+    #
+    # Some artifacts are applications, not documents: the content lives in a
+    # JavaScript array and the DOM is built at runtime. Stripping <script>
+    # then leaves only the static shell -- a title, a couple of headings, and
+    # nothing else. The conversion "succeeds", the file is written, and the
+    # document silently arrives on the Kindle with its substance missing.
+    #
+    # The Weedlabs Server Map is exactly this: 59 KB of HTML holding an
+    # inventory of 58 services, which converted to 177 words. Nothing errored.
+    #
+    # Ratio, not absolute size, is the tell: a real document converts to
+    # roughly 1 word per 25-60 bytes of source. Far past that means the words
+    # were never in the HTML to begin with.
+    ratio = len(raw) / max(words, 1)
+    if ratio > 120:
+        print(
+            f"WARNING  {Path(args.outfile).name}: {words} words from "
+            f"{len(raw) // 1024} KB of HTML ({ratio:.0f} bytes/word).\n"
+            f"         Likely a JS-rendered artifact -- the content is in a "
+            f"<script>, not the markup.\n"
+            f"         Convert this one by hand or extract the data array.",
+            file=sys.stderr,
+        )
+
     print(f"{Path(args.outfile).name:<44} {words:>6} words  {len(out):>7} bytes")
     return 0
 
