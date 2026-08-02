@@ -39,6 +39,10 @@ from .codeblocks import reflow
 # env keys the renderers read
 ENV_CFG = "hub_cfg"
 ENV_IMAGE_RESOLVER = "hub_image_resolver"
+# (kind, content) -> (ResolvedImage | None, caption). Set by the pipeline;
+# absent in tests that render markdown without a figure backend, which is why
+# every call site treats it as optional.
+ENV_FIGURE = "hub_figure"
 
 # An image resolver takes the raw markdown src and returns the href to use in
 # the output, or None if the image could not be used at all.
@@ -109,10 +113,46 @@ class _BaseRenderer(RendererHTML):
         )
 
 
+# Fenced languages that are rendered as pictures rather than as listings.
+FIGURE_LANGS = frozenset({"dot", "graph", "mindmap", "bars", "chart"})
+
+
+def _figure_html(kind: str, content: str, env, caption_class: str = "figure") -> str | None:
+    """Render a figure fence, or return None to fall through to a code block.
+
+    Falling through matters: if graphviz is missing or the diagram source is
+    malformed, the reader should still see the content as text rather than a
+    hole in the page. A diagram is an upgrade, never a dependency.
+    """
+    make = env.get(ENV_FIGURE)
+    if make is None:
+        return None
+    try:
+        resolved, caption = make(kind, content)
+    except Exception:  # noqa: BLE001 -- cosmetic; text fallback is fine
+        return None
+    if resolved is None:
+        return None
+    parts = [
+        f'<div class="{caption_class}">',
+        f'<img src="{_escape(resolved.href)}" alt="{_escape(caption or kind)}" '
+        f'width="{resolved.width}" height="{resolved.height}" />',
+    ]
+    if caption:
+        parts.append(f'<p class="figure-caption">{_escape(caption)}</p>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
 class NarrowRenderer(_BaseRenderer):
     """EPUB profile."""
 
     def fence(self, tokens, idx, options, env):  # noqa: N802
+        lang = (tokens[idx].info or "").strip().split(" ")[0].lower()
+        if lang in FIGURE_LANGS:
+            html = _figure_html(lang, tokens[idx].content, env)
+            if html is not None:
+                return html
         return self._code(tokens[idx].content, tokens[idx].info, env)
 
     def code_block(self, tokens, idx, options, env):  # noqa: N802
@@ -145,6 +185,11 @@ class WideRenderer(_BaseRenderer):
     """Browser profile: original source, real grids, horizontal scroll."""
 
     def fence(self, tokens, idx, options, env):  # noqa: N802
+        lang = (tokens[idx].info or "").strip().split(" ")[0].lower()
+        if lang in FIGURE_LANGS:
+            html = _figure_html(lang, tokens[idx].content, env)
+            if html is not None:
+                return html
         return self._code(tokens[idx].content, tokens[idx].info)
 
     def code_block(self, tokens, idx, options, env):  # noqa: N802

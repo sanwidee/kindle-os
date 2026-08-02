@@ -12,6 +12,17 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# graphviz does diagram LAYOUT, which is the genuinely hard part and not worth
+# hand-rolling: node placement, edge routing, rank assignment. 1.3 MB.
+#
+# fonts-dejavu-core matters more than it looks. Both graphviz and the cover
+# generator fall back to something unreadable without a TrueType font, and the
+# slim image ships none -- a failure that surfaces as ugly output rather than
+# an error, so it would sit there unnoticed.
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends graphviz fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+
 # Dependencies first so an edit to the source does not re-resolve the wheels.
 # Every wheel here is manylinux-prebuilt (pillow, argon2-cffi-bindings), so no
 # compiler is needed and the image stays small.

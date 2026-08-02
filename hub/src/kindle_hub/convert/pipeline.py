@@ -14,8 +14,8 @@ from pathlib import Path
 from ..catalog.store import Document, utcnow
 from ..config import Config
 from ..ingest import frontmatter, scanner
-from . import cover, epub, images, mdrender, textclean
-from .mdrender import ENV_CFG, ENV_IMAGE_RESOLVER, ResolvedImage
+from . import cover, diagram, epub, images, mdrender, textclean
+from .mdrender import ENV_CFG, ENV_FIGURE, ENV_IMAGE_RESOLVER, ResolvedImage
 
 log = logging.getLogger("kindle_hub.pipeline")
 
@@ -71,6 +71,58 @@ def document_identity(relpath: str) -> tuple[str, str]:
     return str(doc_uuid), doc_uuid.hex[:12]
 
 
+def _png_size(data: bytes) -> tuple[int, int]:
+    """Width/height straight out of the PNG IHDR.
+
+    Reading 24 bytes beats decoding the whole image just to fill in two
+    attributes on an <img> tag.
+    """
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        return (
+            int.from_bytes(data[16:20], "big"),
+            int.from_bytes(data[20:24], "big"),
+        )
+    return (0, 0)
+
+
+def _parse_bars(body: str) -> tuple[list[tuple[str, float]], str, str]:
+    """Parse the `bars` fence format.
+
+        unit: jt
+        note: sumber: prisma/dev.db
+        Mei          | 71.6
+        Sekarang     | 46.8
+
+    Deliberately not YAML or CSV: the whole point is that it stays readable
+    as plain text, because if graphviz or Pillow ever fails, this exact block
+    is what the reader sees instead.
+    """
+    rows: list[tuple[str, float]] = []
+    unit = ""
+    note = ""
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        low = line.lower()
+        if low.startswith("unit:"):
+            unit = line.split(":", 1)[1].strip()
+            continue
+        if low.startswith("note:"):
+            note = line.split(":", 1)[1].strip()
+            continue
+        if "|" not in line:
+            continue
+        label, _, value = line.rpartition("|")
+        cleaned = value.strip().replace(".", "").replace(",", ".")
+        cleaned = "".join(c for c in cleaned if c.isdigit() or c in "-.")
+        try:
+            rows.append((label.strip(), float(cleaned)))
+        except ValueError:
+            continue
+    return rows, unit, note
+
+
 class _ImageCollector:
     """Resolves markdown image references once, caching by source path so a
     logo referenced twenty times is processed once."""
@@ -80,6 +132,11 @@ class _ImageCollector:
         self.source_dir = source_dir
         self.processed: dict[str, images.ProcessedImage] = {}
         self.failures: list[str] = []
+        # Generated figures live alongside processed images but are keyed by
+        # content hash rather than by source path, so the same diagram written
+        # twice is rendered once.
+        self.figures: dict[str, bytes] = {}
+        self.captions: dict[str, str] = {}
 
     def _get(self, src: str) -> images.ProcessedImage | None:
         if src in self.processed:
@@ -105,6 +162,74 @@ class _ImageCollector:
             return None
         self.processed[src] = result
         return result
+
+    # --- generated figures ------------------------------------------------
+    #
+    # Diagrams and charts are authored as fenced blocks in the markdown and
+    # rendered here into the same image pool as ordinary <img> references, so
+    # they inherit greyscale conversion, EPUB packaging, and web-reader
+    # serving without any of that being duplicated.
+    #
+    # Content-addressed names keep rebuilds byte-identical: an unchanged
+    # figure produces the same filename and the same bytes.
+
+    def _figure(self, kind: str, content: str) -> tuple[str, str] | None:
+        """Render a figure, returning (image_name, caption) or None.
+
+        None means "fall back to showing the source as a code block". That is
+        the correct outcome for a malformed diagram or a host without
+        graphviz -- the reader still gets the information, just as text.
+        """
+        caption = ""
+        body = content
+        # An optional leading `title: ...` line becomes the caption for both
+        # figure kinds, so captions work the same way everywhere.
+        first, _, rest = content.partition("\n")
+        if first.lower().startswith("title:"):
+            caption = first.split(":", 1)[1].strip()
+            body = rest
+
+        name = diagram.name_for(kind, body)
+        if name in self.figures:
+            return name, self.captions.get(name, caption)
+
+        try:
+            if kind in ("dot", "graph", "mindmap"):
+                rankdir = "LR" if kind == "mindmap" else "TB"
+                data = diagram.render_dot(body, rankdir=rankdir)
+            elif kind in ("bars", "chart"):
+                rows, unit, note = _parse_bars(body)
+                if not rows:
+                    return None
+                data = diagram.render_bars(rows, unit=unit, title="", note=note)
+            else:
+                return None
+        except Exception as exc:  # noqa: BLE001 -- text fallback is fine
+            log.warning("figure %s failed: %s", kind, exc)
+            return None
+
+        self.figures[name] = data
+        self.captions[name] = caption
+        return name, caption
+
+    def epub_figure(self, kind: str, content: str):
+        got = self._figure(kind, content)
+        if got is None:
+            return None, ""
+        name, caption = got
+        w, h = _png_size(self.figures[name])
+        return ResolvedImage(f"../images/{name}", w, h), caption
+
+    def web_figure(self, doc_id: str):
+        def resolve(kind: str, content: str):
+            got = self._figure(kind, content)
+            if got is None:
+                return None, ""
+            name, caption = got
+            w, h = _png_size(self.figures[name])
+            return ResolvedImage(f"/d/{doc_id}/media/{name}", w, h), caption
+
+        return resolve
 
     def epub_resolver(self, src: str) -> ResolvedImage | None:
         result = self._get(src)
@@ -142,10 +267,18 @@ def build(cfg: Config, source: scanner.SourceFile, md=None) -> BuildResult:
     tokens = md.parse(body)
     collector = _ImageCollector(cfg, source.path.parent)
 
-    epub_env = {ENV_CFG: cfg, ENV_IMAGE_RESOLVER: collector.epub_resolver}
+    epub_env = {
+        ENV_CFG: cfg,
+        ENV_IMAGE_RESOLVER: collector.epub_resolver,
+        ENV_FIGURE: collector.epub_figure,
+    }
     sections = mdrender.split_sections(md, tokens, epub_env, default_title=fm.title)
 
-    web_env = {ENV_CFG: cfg, ENV_IMAGE_RESOLVER: collector.web_resolver(doc_id)}
+    web_env = {
+        ENV_CFG: cfg,
+        ENV_IMAGE_RESOLVER: collector.web_resolver(doc_id),
+        ENV_FIGURE: collector.web_figure(doc_id),
+    }
     html_wide = mdrender.render_wide(md, tokens, web_env)
 
     epub_sections = [
@@ -192,7 +325,12 @@ def build(cfg: Config, source: scanner.SourceFile, md=None) -> BuildResult:
         modified=utcnow(),
         css=_load_css("epub-eink.css"),
         sections=epub_sections,
-        images=[epub.EpubImage(p.name, p.data) for p in collector.processed.values()],
+        # Referenced images and generated figures share one pool: both
+        # end up in EPUB/images/ and both are already greyscale.
+        images=(
+            [epub.EpubImage(p.name, p.data) for p in collector.processed.values()]
+            + [epub.EpubImage(n, d) for n, d in sorted(collector.figures.items())]
+        ),
         description=fm.summary,
         cover=cover_img,
     )
@@ -201,12 +339,18 @@ def build(cfg: Config, source: scanner.SourceFile, md=None) -> BuildResult:
     # Media for the web reader lives next to the EPUB and is served through
     # the same X-Accel-Redirect path, so it inherits the same auth check.
     media_dir = doc_dir / "media"
-    if collector.processed:
+    if collector.processed or collector.figures:
         media_dir.mkdir(parents=True, exist_ok=True)
         for processed in collector.processed.values():
             target = media_dir / processed.name
             if not target.exists():
                 target.write_bytes(processed.data)
+        # Figures too, or the web reader references images that were only
+        # ever packaged into the EPUB and shows broken pictures.
+        for fig_name, fig_data in collector.figures.items():
+            target = media_dir / fig_name
+            if not target.exists():
+                target.write_bytes(fig_data)
 
     _prune_old_epubs(doc_dir, keep=epub_name, grace_days=cfg.gc_grace_days)
 
