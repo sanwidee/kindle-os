@@ -58,6 +58,15 @@ case "$c" in
   *)   bad "/_epub/ returned HTTP $c -- expected 404" ;;
 esac
 
+# The ebooks shelf shares the same trap: if `internal` is missing there, the
+# whole personal library is downloadable by anyone who guesses a filename.
+c=$(code_for "/_ebooks/probe.pdf")
+case "$c" in
+  404) ok  "/_ebooks/ refuses external requests (404)" ;;
+  2*)  bad "/_ebooks/ SERVED CONTENT (HTTP $c) -- the library is public RIGHT NOW" ;;
+  *)   bad "/_ebooks/ returned HTTP $c -- expected 404" ;;
+esac
+
 # A bare prefix request should not list anything either.
 c=$(code_for "/_epub/")
 [ "$c" = "404" ] && ok "/_epub/ prefix itself is not listable" \

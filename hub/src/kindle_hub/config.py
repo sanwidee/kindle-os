@@ -80,6 +80,7 @@ class Config:
     code_max_lines: int
     table_columns: int
     eink_max_width: int
+    ebooks_dir: Path
     strip_emoji: bool
     stable_filenames: bool
     renderer_version: str  # bump to force a full rebuild after converter changes
@@ -126,7 +127,8 @@ class Config:
             code_columns=_env_int("HUB_CODE_COLUMNS", 64),
             code_max_lines=_env_int("HUB_CODE_MAX_LINES", 400),
             table_columns=_env_int("HUB_TABLE_COLUMNS", 64),
-            eink_max_width=_env_int("HUB_EINK_MAX_WIDTH", 1072),
+            eink_max_width=_env_int("HUB_EINK_MAX_WIDTH", 1236),
+            ebooks_dir=Path(_env("HUB_EBOOKS_DIR", "/data/ebooks")),
             strip_emoji=_env_bool("HUB_STRIP_EMOJI", True),
             stable_filenames=_env_bool("HUB_STABLE_FILENAMES", False),
             renderer_version=_env("HUB_RENDERER_VERSION", "1"),

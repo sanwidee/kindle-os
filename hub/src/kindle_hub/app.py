@@ -20,6 +20,7 @@ from .builder import Builder
 from .catalog.store import Store
 from .config import Config
 from .web import admin as admin_bp
+from .web import ebooks as ebooks_bp
 from .web import opds as opds_bp
 from .web import reader as reader_bp
 
@@ -106,6 +107,7 @@ def create_app(cfg: Config | None = None, start_builder: bool = True) -> Flask:
     app.register_blueprint(reader_bp.bp)
     app.register_blueprint(opds_bp.bp)
     app.register_blueprint(admin_bp.bp)
+    app.register_blueprint(ebooks_bp.bp)
 
     app.before_request(reader_bp.ensure_csrf_token)
     app.after_request(reader_bp.attach_csrf_cookie)
@@ -120,7 +122,9 @@ def create_app(cfg: Config | None = None, start_builder: bool = True) -> Flask:
 
     @app.errorhandler(404)
     def not_found(_exc):
-        if request.path.startswith("/opds") or request.path.endswith(".epub"):
+        if (request.path.startswith("/opds")
+                or request.path.startswith("/ebooks")
+                or request.path.endswith(".epub")):
             # Never HTML on a Kindle path: KOReader would feed it to the Atom
             # parser and show a silent empty catalog.
             return Response("Not found.\n", status=404, mimetype="text/plain")
@@ -162,7 +166,8 @@ def _no_redirect_guard(response: Response) -> Response:
     it into a loud 500 in the log and a plain 401 on the wire.
     """
     path = request.path
-    if not (path.startswith("/opds") or path.endswith(".epub")):
+    if not (path.startswith("/opds") or path.startswith("/ebooks")
+            or path.endswith(".epub")):
         return response
     if 300 <= response.status_code < 400:
         log.error(

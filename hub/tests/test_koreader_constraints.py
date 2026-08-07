@@ -212,9 +212,16 @@ def test_code_is_reflowed_in_the_epub_but_not_on_the_web(cfg, client, basic_auth
 
     store = Store(cfg.db_path)
     docs, _ = store.shelf("new")
-    wide = store.get_document_html(docs[0].doc_id) or store.get_document_html(
-        docs[1].doc_id
+    # Pick the document that actually CONTAINS a code block, rather than
+    # whichever happens to sort first. Shelf order depends on build time, so
+    # any renderer-config change reshuffles it -- this test used to fail with
+    # "max() arg is empty" purely because the order flipped.
+    wide = next(
+        (h for h in (store.get_document_html(d.doc_id) for d in docs)
+         if h and "<pre><code>" in h),
+        None,
     )
+    assert wide is not None, "no fixture document produced a code block"
     longest = max(
         len(line)
         for block in re.findall(r"<pre><code>(.*?)</code></pre>", wide, re.S)

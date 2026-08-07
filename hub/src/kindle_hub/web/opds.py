@@ -27,11 +27,13 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from urllib.parse import quote, unquote
 
 from flask import Blueprint, Response, current_app, render_template, request
 
 from ..auth.middleware import require_opds
-from ..catalog.store import Document, parse_ts
+from ..catalog.store import Document, parse_ts, utcnow
+from . import ebooks
 
 bp = Blueprint("opds", __name__)
 
@@ -260,6 +262,13 @@ def root():
             links=[Link("subsection", url("/opds/tags"), NAV_TYPE)],
         ),
         Entry(
+            id=feed_id("/opds/ebooks"),
+            title="Ebooks",
+            updated=last_modified,
+            summary=f"{len(ebooks.scan())} files from the personal library.",
+            links=[Link("subsection", url("/opds/ebooks"), NAV_TYPE)],
+        ),
+        Entry(
             id=feed_id("/opds/all"),
             title="All documents",
             updated=last_modified,
@@ -355,3 +364,103 @@ def opensearch():
         acq_type=ACQ_TYPE,
     )
     return _respond(body, OPENSEARCH_TYPE, store.library_last_modified())
+
+
+# --- ebooks shelf ---------------------------------------------------------
+#
+# Backed by a directory rather than the documents table. Split A-Z because a
+# single feed of several hundred entries is unusable on a panel that repaints
+# in about a second.
+
+
+def _ebook_entry(b) -> Entry:
+    href = url(f"/ebooks/{b.bid}/{b.rel.rsplit('/', 1)[-1]}")
+    return Entry(
+        id=feed_id(f"/ebooks/{b.bid}"),
+        title=b.title,
+        updated=_iso(b.mtime),
+        summary=b.size_h,
+        links=[Link("http://opds-spec.org/acquisition", href, b.mime)],
+    )
+
+
+def _iso(ts: float) -> str:
+    from datetime import UTC, datetime
+    return datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@bp.route("/opds/ebooks")
+@require_opds
+def ebooks_root():
+    books = ebooks.scan()
+    updated = _iso(max((b.mtime for b in books), default=0)) if books else utcnow()
+    entries = [
+        Entry(
+            id=feed_id(f"/opds/ebooks/letter/{letter}"),
+            title=letter,
+            updated=updated,
+            summary=f"{count} file{'s' if count != 1 else ''}.",
+            links=[Link("subsection", url(f"/opds/ebooks/letter/{letter}"), ACQ_TYPE)],
+        )
+        for letter, count in ebooks.initials()
+    ]
+    for i, sh in enumerate(ebooks.shelves()):
+        entries.insert(i, Entry(
+            id=feed_id(f"/opds/ebooks/shelf/{sh.name}"),
+            title=sh.name,
+            updated=updated,
+            summary=sh.note or f"{len(sh.books)} book{'s' if len(sh.books) != 1 else ''}.",
+            links=[Link("subsection",
+                        url(f"/opds/ebooks/shelf/{quote(sh.name)}"), ACQ_TYPE)],
+        ))
+    entries.insert(len(ebooks.shelves()), Entry(
+        id=feed_id("/opds/ebooks/recent"),
+        title="Recently added",
+        updated=updated,
+        summary="Newest files first.",
+        links=[Link("subsection", url("/opds/ebooks/recent"), ACQ_TYPE)],
+    ))
+    return _navigation_feed("/opds/ebooks", "Ebooks", entries, updated)
+
+
+def _ebook_feed(path: str, title: str, books: list) -> Response:
+    updated = _iso(max((b.mtime for b in books), default=0)) if books else utcnow()
+    body = render_template(
+        "opds/acquisition.xml",
+        feed_id=feed_id(path), feed_title=title, updated=updated,
+        links=[Link("self", url(path), ACQ_TYPE),
+               Link("start", url("/opds"), NAV_TYPE),
+               Link("up", url("/opds/ebooks"), NAV_TYPE)],
+        entries=[_ebook_entry(b) for b in books],
+    )
+    return _respond(_guard(body), ACQ_TYPE, updated)
+
+
+@bp.route("/opds/ebooks/letter/<letter>")
+@require_opds
+def ebooks_letter(letter: str):
+    key = letter.upper()[:1]
+    books = [b for b in ebooks.scan()
+             if (b.title[:1].upper() if b.title[:1].isalpha() else "#") == key]
+    return _ebook_feed(f"/opds/ebooks/letter/{key}", f"Ebooks · {key}", books)
+
+
+@bp.route("/opds/ebooks/recent")
+@require_opds
+def ebooks_recent():
+    books = sorted(ebooks.scan(), key=lambda b: -b.mtime)[:60]
+    return _ebook_feed("/opds/ebooks/recent", "Ebooks · recently added", books)
+
+
+@bp.route("/opds/ebooks/shelf/<path:name>")
+@require_opds
+def ebooks_shelf(name: str):
+    """A curated shelf. Order is the order in the manifest, deliberately:
+    the owner wrote it in reading order, so sorting it would discard the one
+    piece of information the manifest carries that the filesystem does not."""
+    target = unquote(name)
+    sh = next((s for s in ebooks.shelves() if s.name == target), None)
+    if sh is None:
+        from flask import abort
+        abort(404)
+    return _ebook_feed(f"/opds/ebooks/shelf/{name}", sh.name, sh.books)

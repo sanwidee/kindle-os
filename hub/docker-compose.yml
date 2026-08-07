@@ -52,6 +52,14 @@ services:
       - /srv/kindle-os/inbox:/data/inbox:ro
       - /srv/kindle-os/library:/data/library:rw
       - /srv/kindle-os/state:/data/state:rw
+      # The personal library. Read-only on purpose: this shelf lists and
+      # serves files, it never writes them. Uploads arrive by rsync from
+      # outside the container.
+      #
+      # This mount was once added directly on the server with sed and lost at
+      # the next deploy, which overwrote the file from the repo. Anything the
+      # running system needs belongs here, not in a shell on the box.
+      - /srv/kindle-os/ebooks:/data/ebooks:ro
       # No :z / :Z labels: SELinux is Disabled on this box. If it is ever
       # returned to enforcing, the bind mounts need container_file_t and
       # three other things break at the same time -- `kindle-hub doctor`
